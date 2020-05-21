@@ -9,13 +9,11 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 
 
-class AdamWCD(Optimizer):
-    r"""Implements AdamWCD algorithm.
+class AdamCD(Optimizer):
+    r"""Implements AdamCD algorithm.
 
-    The original Adam algorithm was proposed in `Adam: A Method for Stochastic Optimization`_.
-    The AdamW variant was proposed in `Decoupled Weight Decay Regularization`_.
-    The AdamWCD variant of AdamW was inspired by `Uber Pyro ClippedAdam variant of Adam` _.
-    AdamWCD further introduces epoch-wise learning rate decay.
+    It has been proposed in `Adam: A Method for Stochastic Optimization`_.
+    AdamCD further introduces gradient clipping and epoch-wise learning rate decay, similarly to the `Uber Pyro ClippedAdam variant of Adam`_.
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
@@ -25,7 +23,7 @@ class AdamWCD(Optimizer):
             running averages of gradient and its square (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
             numerical stability (default: 1e-8)
-        weight_decay (float, optional): weight decay coefficient (default: 1e-2)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
             (default: False)
@@ -35,8 +33,6 @@ class AdamWCD(Optimizer):
 
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
-    .. _Decoupled Weight Decay Regularization:
-        https://arxiv.org/abs/1711.05101
     .. _Uber Pyro ClippedAdam variant of Adam:
         http://docs.pyro.ai/en/latest/_modules/pyro/optim/clipped_adam.html
     .. _On the Convergence of Adam and Beyond:
@@ -82,10 +78,10 @@ class AdamWCD(Optimizer):
             lrd_epoch=lrd_epoch,
         )
         self.lrd_epoch_persist = lrd_epoch
-        super(AdamWCD, self).__init__(params, defaults)
+        super(AdamCD, self).__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(AdamWCD, self).__setstate__(state)
+        super(AdamCD, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault("amsgrad", False)
 
@@ -113,19 +109,15 @@ class AdamWCD(Optimizer):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-
-                # Perform stepweight decay
-                p.mul_(1 - group["lr"] * group["weight_decay"])
-
-                # Perform optimization step
                 grad = p.grad
 
                 # Clamp the gradient
                 grad.clamp_(-group["clip_norm"], group["clip_norm"])
 
-                # Continue optimization step
                 if grad.is_sparse:
-                    raise RuntimeError("AdamWCD does not support sparse gradients")
+                    raise RuntimeError(
+                        "AdamCD does not support sparse gradients, please consider SparseAdam instead"
+                    )
                 amsgrad = group["amsgrad"]
 
                 state = self.state[p]
@@ -155,6 +147,9 @@ class AdamWCD(Optimizer):
                 state["step"] += 1
                 bias_correction1 = 1 - beta1 ** state["step"]
                 bias_correction2 = 1 - beta2 ** state["step"]
+
+                if group["weight_decay"] != 0:
+                    grad = grad.add(p, alpha=group["weight_decay"])
 
                 # Decay the first and second moment running average coefficient
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
