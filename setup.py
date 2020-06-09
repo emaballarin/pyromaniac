@@ -35,7 +35,7 @@ setup(
     author="Emanuele Ballarin",
     author_email="emanuele@ballarin.cc",
     packages=find_packages(exclude=("tests",)),
-    python_requires=">=3.7.0",
+    python_requires=">=3.6.9",
     description="Collection of PyTorch uses and abuses.",
     long_description=long_description,
     long_description_content_type="text/markdown",
